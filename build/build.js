@@ -8,32 +8,18 @@ if (!fs.existsSync('dist')) {
   fs.mkdirSync('dist')
 }
 
-// Update main file
-const version = process.env.VERSION || require('../package.json').version
-const main = fs
-  .readFileSync('src/core/index.js', 'utf-8')
-  .replace(/Vue\.version = '[^']+'/, "Vue.version = '" + version + "'")
-fs.writeFileSync('src/core/index.js', main)
-
-// update weex subversion
-const weexVersion = process.env.WEEX_VERSION || require('../packages/weex-vue-framework/package.json').version
-const weexMain = fs
-  .readFileSync('src/entries/weex-framework.js', 'utf-8')
-  .replace(/Vue\.version = '[^']+'/, "Vue.version = '" + weexVersion + "'")
-fs.writeFileSync('src/entries/weex-framework.js', weexMain)
-
 let builds = require('./config').getAllBuilds()
 
 // filter builds via command line arg
 if (process.argv[2]) {
   const filters = process.argv[2].split(',')
   builds = builds.filter(b => {
-    return filters.some(f => b.dest.indexOf(f) > -1)
+    return filters.some(f => b.output.file.indexOf(f) > -1 || b._name.indexOf(f) > -1)
   })
 } else {
   // filter out weex builds by default
   builds = builds.filter(b => {
-    return b.dest.indexOf('weex') === -1
+    return b.output.file.indexOf('weex') === -1
   })
 }
 
@@ -55,25 +41,26 @@ function build (builds) {
 }
 
 function buildEntry (config) {
-  const isProd = /min\.js$/.test(config.dest)
-  return rollup.rollup(config).then(bundle => {
-    const code = bundle.generate(config).code
-    if (isProd) {
-      var minified = (config.banner ? config.banner + '\n' : '') + uglify.minify(code, {
-        fromString: true,
-        output: {
-          screw_ie8: true,
-          ascii_only: true
-        },
-        compress: {
-          pure_funcs: ['makeMap']
-        }
-      }).code
-      return write(config.dest, minified, true)
-    } else {
-      return write(config.dest, code)
-    }
-  })
+  const output = config.output
+  const { file, banner } = output
+  const isProd = /min\.js$/.test(file)
+  return rollup.rollup(config)
+    .then(bundle => bundle.generate(output))
+    .then(({ code }) => {
+      if (isProd) {
+        var minified = (banner ? banner + '\n' : '') + uglify.minify(code, {
+          output: {
+            ascii_only: true
+          },
+          compress: {
+            pure_funcs: ['makeMap']
+          }
+        }).code
+        return write(file, minified, true)
+      } else {
+        return write(file, code)
+      }
+    })
 }
 
 function write (dest, code, zip) {

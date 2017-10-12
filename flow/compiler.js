@@ -5,8 +5,9 @@ declare type CompilerOptions = {
   staticKeys?: string; // a list of AST properties to be considered static; for optimization
   directives?: { [key: string]: Function }; // platform specific directives
   isUnaryTag?: (tag: string) => ?boolean; // check if a tag is unary for the platform
+  canBeLeftOpenTag?: (tag: string) => ?boolean; // check if a tag can be left opened
   isReservedTag?: (tag: string) => ?boolean; // check if a tag is a native for the platform
-  mustUseProp?: (tag: string, attr: string) => ?boolean; // check if an attribute should be bound as a property
+  mustUseProp?: (tag: string, type: ?string, name: string) => boolean; // check if an attribute should be bound as a property
   isPreTag?: (attr: string) => ?boolean; // check if a tag needs to preserve whitespace
   getTagNamespace?: (tag: string) => ?string; // check the namespace for a tag
   transforms?: Array<Function>; // a list of transforms on parsed AST before codegen
@@ -15,42 +16,48 @@ declare type CompilerOptions = {
   shouldDecodeTags?: boolean;
   shouldDecodeNewlines?: boolean;
 
+  // for ssr optimization compiler
+  scopeId?: string;
+
   // runtime user-configurable
   delimiters?: [string, string]; // template delimiters
-}
+
+  // allow user kept comments
+  comments?: boolean
+};
 
 declare type CompiledResult = {
   ast: ?ASTElement;
   render: string;
   staticRenderFns: Array<string>;
+  stringRenderFns?: Array<string>;
   errors?: Array<string>;
-}
-
-declare type CompiledFunctionResult = {
-  render: Function;
-  staticRenderFns: Array<Function>;
-}
+  tips?: Array<string>;
+};
 
 declare type ModuleOptions = {
-  preTransformNode: (el: ASTElement) => void;
-  transformNode: (el: ASTElement) => void; // transform an element's AST node
+  // returning an ASTElement from pre/transforms replaces the element
+  preTransformNode: (el: ASTElement) => ?ASTElement;
+  transformNode: (el: ASTElement) => ?ASTElement;
+  // cannot return replacement in postTransform because tree is already finalized
   postTransformNode: (el: ASTElement) => void;
   genData: (el: ASTElement) => string; // generate extra data string for an element
   transformCode?: (el: ASTElement, code: string) => string; // further transform generated code for an element
   staticKeys?: Array<string>; // AST properties to be considered static
-}
+};
 
-declare type ASTModifiers = { [key: string]: boolean }
-declare type ASTIfConditions = Array<{ exp: ?string; block: ASTElement }>
+declare type ASTModifiers = { [key: string]: boolean };
+declare type ASTIfCondition = { exp: ?string; block: ASTElement };
+declare type ASTIfConditions = Array<ASTIfCondition>;
 
 declare type ASTElementHandler = {
   value: string;
   modifiers: ?ASTModifiers;
-}
+};
 
 declare type ASTElementHandlers = {
   [key: string]: ASTElementHandler | Array<ASTElementHandler>;
-}
+};
 
 declare type ASTDirective = {
   name: string;
@@ -58,9 +65,9 @@ declare type ASTDirective = {
   value: string;
   arg: ?string;
   modifiers: ?ASTModifiers;
-}
+};
 
-declare type ASTNode = ASTElement | ASTText | ASTExpression
+declare type ASTNode = ASTElement | ASTText | ASTExpression;
 
 declare type ASTElement = {
   type: 1;
@@ -69,6 +76,8 @@ declare type ASTElement = {
   attrsMap: { [key: string]: string | null };
   parent: ASTElement | void;
   children: Array<ASTNode>;
+
+  processed?: true;
 
   static?: boolean;
   staticRoot?: boolean;
@@ -117,29 +126,44 @@ declare type ASTElement = {
   transition?: string | true;
   transitionOnAppear?: boolean;
 
+  model?: {
+    value: string;
+    callback: string;
+    expression: string;
+  };
+
   directives?: Array<ASTDirective>;
 
   forbidden?: true;
   once?: true;
   onceProcessed?: boolean;
   wrapData?: (code: string) => string;
+  wrapListeners?: (code: string) => string;
+
+  // 2.4 ssr optimization
+  ssrOptimizability?: number;
 
   // weex specific
   appendAsTree?: boolean;
-}
+};
 
 declare type ASTExpression = {
   type: 2;
   expression: string;
   text: string;
   static?: boolean;
-}
+  // 2.4 ssr optimization
+  ssrOptimizability?: number;
+};
 
 declare type ASTText = {
   type: 3;
   text: string;
   static?: boolean;
-}
+  isComment?: boolean;
+  // 2.4 ssr optimization
+  ssrOptimizability?: number;
+};
 
 // SFC-parser related declarations
 
@@ -158,7 +182,7 @@ declare type SFCCustomBlock = {
   end?: number;
   src?: string;
   attrs: {[attribute:string]: string};
-}
+};
 
 declare type SFCBlock = {
   type: string;
@@ -169,4 +193,4 @@ declare type SFCBlock = {
   src?: string;
   scoped?: boolean;
   module?: string | boolean;
-}
+};

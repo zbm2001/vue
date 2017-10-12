@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import { compile } from 'entries/web-compiler'
+import { compile } from 'web/compiler'
 import { getAndRemoveAttr } from 'compiler/helpers'
 
 describe('compile options', () => {
@@ -51,7 +51,7 @@ describe('compile options', () => {
             result[validator.name] = null
           })
           // generate code
-          return `_h('validate',{props:{
+          return `_c('validate',{props:{
             field:${JSON.stringify(el.validate.field)},
             groups:${JSON.stringify(el.validate.groups)},
             validators:${JSON.stringify(el.validators)},

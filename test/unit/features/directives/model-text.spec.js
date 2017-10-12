@@ -45,6 +45,7 @@ describe('Directive v-model text', () => {
     expect(vm.test).toBe(1)
     vm.$el.value = '2'
     triggerEvent(vm.$el, 'input')
+    expect(vm.test).toBe(2)
     // should let strings pass through
     vm.$el.value = 'f'
     triggerEvent(vm.$el, 'input')
@@ -62,6 +63,61 @@ describe('Directive v-model text', () => {
     vm.$el.value = ' what '
     triggerEvent(vm.$el, 'input')
     expect(vm.test).toBe('what')
+  })
+
+  it('.number focus and typing', (done) => {
+    const vm = new Vue({
+      data: {
+        test: 0,
+        update: 0
+      },
+      template:
+        '<div>' +
+          '<input ref="input" v-model.number="test">{{ update }}' +
+          '<input ref="blur">' +
+        '</div>'
+    }).$mount()
+    document.body.appendChild(vm.$el)
+    vm.$refs.input.focus()
+    expect(vm.test).toBe(0)
+    vm.$refs.input.value = '1.0'
+    triggerEvent(vm.$refs.input, 'input')
+    expect(vm.test).toBe(1)
+    vm.update++
+    waitForUpdate(() => {
+      expect(vm.$refs.input.value).toBe('1.0')
+      vm.$refs.blur.focus()
+      vm.update++
+    }).then(() => {
+      expect(vm.$refs.input.value).toBe('1')
+    }).then(done)
+  })
+
+  it('.trim focus and typing', (done) => {
+    const vm = new Vue({
+      data: {
+        test: 'abc',
+        update: 0
+      },
+      template:
+        '<div>' +
+          '<input ref="input" v-model.trim="test" type="text">{{ update }}' +
+          '<input ref="blur"/>' +
+        '</div>'
+    }).$mount()
+    document.body.appendChild(vm.$el)
+    vm.$refs.input.focus()
+    vm.$refs.input.value = ' abc '
+    triggerEvent(vm.$refs.input, 'input')
+    expect(vm.test).toBe('abc')
+    vm.update++
+    waitForUpdate(() => {
+      expect(vm.$refs.input.value).toBe(' abc ')
+      vm.$refs.blur.focus()
+      vm.update++
+    }).then(() => {
+      expect(vm.$refs.input.value).toBe('abc')
+    }).then(done)
   })
 
   it('multiple inputs', (done) => {
@@ -149,30 +205,6 @@ describe('Directive v-model text', () => {
     })
   }
 
-  it('warn inline value attribute', () => {
-    const vm = new Vue({
-      data: {
-        test: 'foo'
-      },
-      template: '<input v-model="test" value="bar">'
-    }).$mount()
-    expect(vm.test).toBe('foo')
-    expect(vm.$el.value).toBe('foo')
-    expect('inline value attributes will be ignored').toHaveBeenWarned()
-  })
-
-  it('warn textarea inline content', function () {
-    const vm = new Vue({
-      data: {
-        test: 'foo'
-      },
-      template: '<textarea v-model="test">bar</textarea>'
-    }).$mount()
-    expect(vm.test).toBe('foo')
-    expect(vm.$el.value).toBe('foo')
-    expect('inline content inside <textarea> will be ignored').toHaveBeenWarned()
-  })
-
   it('warn invalid tag', () => {
     new Vue({
       data: {
@@ -180,7 +212,7 @@ describe('Directive v-model text', () => {
       },
       template: '<div v-model="test"></div>'
     }).$mount()
-    expect('v-model is not supported on element type: <div>').toHaveBeenWarned()
+    expect('<div v-model="test">: v-model is not supported on this element type').toHaveBeenWarned()
   })
 
   // #3468
@@ -217,4 +249,126 @@ describe('Directive v-model text', () => {
     }).$mount()
     expect('You are binding v-model directly to a v-for iteration alias').toHaveBeenWarned()
   })
+
+  if (!isAndroid) {
+    it('does not trigger extra input events with single compositionend', () => {
+      const spy = jasmine.createSpy()
+      const vm = new Vue({
+        data: {
+          a: 'a'
+        },
+        template: '<input v-model="a" @input="onInput">',
+        methods: {
+          onInput (e) {
+            spy(e.target.value)
+          }
+        }
+      }).$mount()
+      expect(spy.calls.count()).toBe(0)
+      vm.$el.value = 'b'
+      triggerEvent(vm.$el, 'input')
+      expect(spy.calls.count()).toBe(1)
+      triggerEvent(vm.$el, 'compositionend')
+      expect(spy.calls.count()).toBe(1)
+    })
+
+    it('triggers extra input on compositionstart + end', () => {
+      const spy = jasmine.createSpy()
+      const vm = new Vue({
+        data: {
+          a: 'a'
+        },
+        template: '<input v-model="a" @input="onInput">',
+        methods: {
+          onInput (e) {
+            spy(e.target.value)
+          }
+        }
+      }).$mount()
+      expect(spy.calls.count()).toBe(0)
+      vm.$el.value = 'b'
+      triggerEvent(vm.$el, 'input')
+      expect(spy.calls.count()).toBe(1)
+      triggerEvent(vm.$el, 'compositionstart')
+      triggerEvent(vm.$el, 'compositionend')
+      expect(spy.calls.count()).toBe(2)
+    })
+
+    // #4392
+    it('should not update value with modifiers when in focus if post-conversion values are the same', done => {
+      const vm = new Vue({
+        data: {
+          a: 1,
+          foo: false
+        },
+        template: '<div>{{ foo }}<input ref="input" v-model.number="a"></div>'
+      }).$mount()
+
+      document.body.appendChild(vm.$el)
+      vm.$refs.input.focus()
+      vm.$refs.input.value = '1.000'
+      vm.foo = true
+
+      waitForUpdate(() => {
+        expect(vm.$refs.input.value).toBe('1.000')
+      }).then(done)
+    })
+
+    // #6552
+    // This was original introduced due to the microtask between DOM events issue
+    // but fixed after switching to MessageChannel.
+    it('should not block input when another input listener with modifier is used', done => {
+      const vm = new Vue({
+        data: {
+          a: 'a',
+          foo: false
+        },
+        template: `
+          <div>
+            <input ref="input" v-model="a" @input.capture="onInput">{{ a }}
+            <div v-if="foo">foo</div>
+          </div>
+        `,
+        methods: {
+          onInput (e) {
+            this.foo = true
+          }
+        }
+      }).$mount()
+
+      document.body.appendChild(vm.$el)
+      vm.$refs.input.focus()
+      vm.$refs.input.value = 'b'
+      triggerEvent(vm.$refs.input, 'input')
+
+      // not using wait for update here because there will be two update cycles
+      // one caused by onInput in the first listener
+      setTimeout(() => {
+        expect(vm.a).toBe('b')
+        expect(vm.$refs.input.value).toBe('b')
+        done()
+      }, 16)
+    })
+
+    it('should create and make reactive non-existent properties', done => {
+      const vm = new Vue({
+        data: {
+          foo: {}
+        },
+        template: '<input v-model="foo.bar">'
+      }).$mount()
+      expect(vm.$el.value).toBe('')
+
+      vm.$el.value = 'a'
+      triggerEvent(vm.$el, 'input')
+      expect(vm.foo.bar).toBe('a')
+      vm.foo.bar = 'b'
+      waitForUpdate(() => {
+        expect(vm.$el.value).toBe('b')
+        vm.foo = {}
+      }).then(() => {
+        expect(vm.$el.value).toBe('')
+      }).then(done)
+    })
+  }
 })
