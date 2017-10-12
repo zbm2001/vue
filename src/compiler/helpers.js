@@ -1,13 +1,15 @@
 /* @flow */
 
+import { parseFilters } from './parser/filter-parser'
+
 export function baseWarn (msg: string) {
-  console.error(`[Vue parser]: ${msg}`)
+  console.error(`[Vue compiler]: ${msg}`)
 }
 
-export function pluckModuleFunction (
+export function pluckModuleFunction<F: Function> (
   modules: ?Array<Object>,
   key: string
-): Array<Function> {
+): Array<F> {
   return modules
     ? modules.map(m => m[key]).filter(_ => _)
     : []
@@ -27,7 +29,7 @@ export function addDirective (
   rawName: string,
   value: string,
   arg: ?string,
-  modifiers: ?{ [key: string]: true }
+  modifiers: ?ASTModifiers
 ) {
   (el.directives || (el.directives = [])).push({ name, rawName, value, arg, modifiers })
 }
@@ -36,13 +38,34 @@ export function addHandler (
   el: ASTElement,
   name: string,
   value: string,
-  modifiers: ?{ [key: string]: true },
-  important: ?boolean
+  modifiers: ?ASTModifiers,
+  important?: boolean,
+  warn?: Function
 ) {
+  // warn prevent and passive modifier
+  /* istanbul ignore if */
+  if (
+    process.env.NODE_ENV !== 'production' && warn &&
+    modifiers && modifiers.prevent && modifiers.passive
+  ) {
+    warn(
+      'passive and prevent can\'t be used together. ' +
+      'Passive handler can\'t prevent default event.'
+    )
+  }
   // check capture modifier
   if (modifiers && modifiers.capture) {
     delete modifiers.capture
     name = '!' + name // mark the event as captured
+  }
+  if (modifiers && modifiers.once) {
+    delete modifiers.once
+    name = '~' + name // mark the event as once
+  }
+  /* istanbul ignore if */
+  if (modifiers && modifiers.passive) {
+    delete modifiers.passive
+    name = '&' + name // mark the event as passive
   }
   let events
   if (modifiers && modifiers.native) {
@@ -72,7 +95,7 @@ export function getBindingAttr (
     getAndRemoveAttr(el, ':' + name) ||
     getAndRemoveAttr(el, 'v-bind:' + name)
   if (dynamicValue != null) {
-    return dynamicValue
+    return parseFilters(dynamicValue)
   } else if (getStatic !== false) {
     const staticValue = getAndRemoveAttr(el, name)
     if (staticValue != null) {

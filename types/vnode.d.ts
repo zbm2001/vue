@@ -1,6 +1,8 @@
 import { Vue } from "./vue";
 
-export type VNodeChildren = VNodeChildrenArrayContents | string;
+export type ScopedSlot = (props: any) => VNodeChildrenArrayContents | string;
+
+export type VNodeChildren = VNodeChildrenArrayContents | [ScopedSlot] | string;
 export interface VNodeChildrenArrayContents {
   [x: number]: VNode | string | VNodeChildren;
 }
@@ -15,7 +17,7 @@ export interface VNode {
   context?: Vue;
   key?: string | number;
   componentOptions?: VNodeComponentOptions;
-  child?: Vue;
+  componentInstance?: Vue;
   parent?: VNode;
   raw?: boolean;
   isStatic?: boolean;
@@ -24,7 +26,7 @@ export interface VNode {
 }
 
 export interface VNodeComponentOptions {
-  Ctor: Vue;
+  Ctor: typeof Vue;
   propsData?: Object;
   listeners?: Object;
   children?: VNodeChildren;
@@ -34,10 +36,12 @@ export interface VNodeComponentOptions {
 export interface VNodeData {
   key?: string | number;
   slot?: string;
+  scopedSlots?: { [key: string]: ScopedSlot };
   ref?: string;
   tag?: string;
   staticClass?: string;
   class?: any;
+  staticStyle?: { [key: string]: any };
   style?: Object[] | Object;
   props?: { [key: string]: any };
   attrs?: { [key: string]: any };

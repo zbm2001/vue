@@ -1,5 +1,5 @@
 import Vue = require("../index");
-import { ComponentOptions, FunctionalComponentOptions } from "../index";
+import { AsyncComponent, ComponentOptions, FunctionalComponentOptions } from "../index";
 
 interface Component extends Vue {
   a: number;
@@ -92,7 +92,7 @@ Vue.component('component', {
       createElement("div", "message"),
       createElement(Vue.component("component")),
       createElement({} as ComponentOptions<Vue>),
-      createElement({ functional: true }),
+      createElement({ functional: true, render () {}}),
 
       createElement(() => Vue.component("component")),
       createElement(() => ( {} as ComponentOptions<Vue> )),
@@ -123,6 +123,8 @@ Vue.component('component', {
   mounted() {},
   beforeUpdate() {},
   updated() {},
+  activated() {},
+  deactivated() {},
 
   directives: {
     a: {
@@ -160,24 +162,66 @@ Vue.component('component', {
   delimiters: ["${", "}"]
 } as ComponentOptions<Component>);
 
+Vue.component('component-with-scoped-slot', {
+  render (h) {
+    interface ScopedSlotProps {
+      msg: string
+    }
+
+    return h('div', [
+      h('child', [
+        // default scoped slot as children
+        (props: ScopedSlotProps) => [h('span', [props.msg])]
+      ]),
+      h('child', {
+        scopedSlots: {
+          // named scoped slot as vnode data
+          item: (props: ScopedSlotProps) => [h('span', [props.msg])]
+        }
+      })
+    ])
+  },
+  components: {
+    child: {
+      render (h) {
+        return h('div', [
+          this.$scopedSlots['default']({ msg: 'hi' }),
+          this.$scopedSlots['item']({ msg: 'hello' })
+        ])
+      }
+    } as ComponentOptions<Vue>
+  }
+} as ComponentOptions<Vue>)
+
 Vue.component('functional-component', {
   props: ['prop'],
   functional: true,
+  inject: ['foo'],
   render(createElement, context) {
     context.props;
     context.children;
-    context.slots;
+    context.slots();
     context.data;
     context.parent;
     return createElement("div", {}, context.children);
   }
 } as FunctionalComponentOptions);
 
-Vue.component("async-component", (resolve, reject) => {
+Vue.component('functional-component-object-inject', {
+  functional: true,
+  inject: {
+    foo: 'bar',
+    baz: Symbol()
+  }
+})
+
+Vue.component("async-component", ((resolve, reject) => {
   setTimeout(() => {
     resolve(Vue.component("component"));
   }, 0);
   return new Promise((resolve) => {
     resolve({ functional: true } as FunctionalComponentOptions);
   })
-});
+}) as AsyncComponent);
+
+Vue.component('async-es-module-component', (() => import('./es-module')) as AsyncComponent)
